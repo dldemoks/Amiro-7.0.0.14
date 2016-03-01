@@ -25,6 +25,41 @@ class Payeer_Callback
     {
 		if (isset($_POST['m_operation_id']) && isset($_POST['m_sign']))
 		{
+			$m_key = $this->_secretKey;
+			
+			$arHash = array(
+				$_POST['m_operation_id'],
+				$_POST['m_operation_ps'],
+				$_POST['m_operation_date'],
+				$_POST['m_operation_pay_date'],
+				$_POST['m_shop'],
+				$_POST['m_orderid'],
+				$_POST['m_amount'],
+				$_POST['m_curr'],
+				$_POST['m_desc'],
+				$_POST['m_status'],
+				$m_key
+			);
+			
+			$sign_hash = strtoupper(hash('sha256', implode(":", $arHash)));
+			
+			if ($_POST["m_sign"] != $sign_hash)
+			{
+				$to = $this->_emailerr;
+				
+				if (!empty($to))
+				{
+					$subject = "Payment error";
+					$message = "Failed to make the payment through Payeer for the following reasons:\n\n";
+					$message .= " - Do not match the digital signature\n";
+					$message .= "\n" . $log_text;
+					$headers = "From: no-reply@" . $_SERVER['HTTP_SERVER'] . "\r\nContent-type: text/plain; charset=utf-8 \r\n";
+					mail($to, $subject, $message, $headers);
+				}
+
+				exit($_POST['m_orderid'] . '|error');
+			}
+			
 			// проверка принадлежности ip списку доверенных ip
 			$list_ip_str = str_replace(' ', '', $this->_ipfilter);
 			
@@ -72,41 +107,6 @@ class Payeer_Callback
 			if (!empty($this->_log))
 			{
 				file_put_contents($_SERVER['DOCUMENT_ROOT'] . $this->_log, $log_text, FILE_APPEND);
-			}
-	
-			$m_key = $this->_secretKey;
-			
-			$arHash = array(
-				$_POST['m_operation_id'],
-				$_POST['m_operation_ps'],
-				$_POST['m_operation_date'],
-				$_POST['m_operation_pay_date'],
-				$_POST['m_shop'],
-				$_POST['m_orderid'],
-				$_POST['m_amount'],
-				$_POST['m_curr'],
-				$_POST['m_desc'],
-				$_POST['m_status'],
-				$m_key
-			);
-			
-			$sign_hash = strtoupper(hash('sha256', implode(":", $arHash)));
-			
-			if ($_POST["m_sign"] != $sign_hash)
-			{
-				$to = $this->_emailerr;
-				
-				if (!empty($to))
-				{
-					$subject = "Payment error";
-					$message = "Failed to make the payment through Payeer for the following reasons:\n\n";
-					$message .= " - Do not match the digital signature\n";
-					$message .= "\n" . $log_text;
-					$headers = "From: no-reply@" . $_SERVER['HTTP_SERVER'] . "\r\nContent-type: text/plain; charset=utf-8 \r\n";
-					mail($to, $subject, $message, $headers);
-				}
-
-				exit($_POST['m_orderid'] . '|error');
 			}
 
 			$oDB = AMI::getSingleton('db');
