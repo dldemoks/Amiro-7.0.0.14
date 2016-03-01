@@ -91,6 +91,23 @@ class Payeer_Callback
 			);
 			
 			$sign_hash = strtoupper(hash('sha256', implode(":", $arHash)));
+			
+			if ($_POST["m_sign"] != $sign_hash)
+			{
+				$to = $this->_emailerr;
+				
+				if (!empty($to))
+				{
+					$subject = "Payment error";
+					$message = "Failed to make the payment through Payeer for the following reasons:\n\n";
+					$message .= " - Do not match the digital signature\n";
+					$message .= "\n" . $log_text;
+					$headers = "From: no-reply@" . $_SERVER['HTTP_SERVER'] . "\r\nContent-type: text/plain; charset=utf-8 \r\n";
+					mail($to, $subject, $message, $headers);
+				}
+
+				exit ($_POST['m_orderid'] . '|error');
+			}
 
 			$oDB = AMI::getSingleton('db');
 				
@@ -122,16 +139,12 @@ class Payeer_Callback
 						DB_Query::getSnippet('WHERE id IN (%s)')->q($_POST['m_orderid'])
 					));
 					
-					if (!empty($this->_emailerr))
+					$to = $this->_emailerr;
+					
+					if (!empty($to))
 					{
-						$to = $this->_emailerr;
 						$subject = "Payment error";
 						$message = "Failed to make the payment through Payeer for the following reasons:\n\n";
-						
-						if ($_POST["m_sign"] != $sign_hash)
-						{
-							$message .= " - Do not match the digital signature\n";
-						}
 						
 						if ($_POST['m_status'] != "success")
 						{
