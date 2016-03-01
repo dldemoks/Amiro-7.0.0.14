@@ -106,7 +106,7 @@ class Payeer_Callback
 					mail($to, $subject, $message, $headers);
 				}
 
-				exit ($_POST['m_orderid'] . '|error');
+				exit($_POST['m_orderid'] . '|error');
 			}
 
 			$oDB = AMI::getSingleton('db');
