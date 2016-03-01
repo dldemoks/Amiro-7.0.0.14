@@ -12,38 +12,39 @@ class Payeer_Callback
 	private $_log;
 	private $_emailerr;
 
-    public function __construct(array $request, $secretKey, $ipfilter, $log, $emailerr)
+    public function __construct(array $request)
     {
-        $this->_secretKey = (string)$secretKey;
-		$this->_ipfilter = (string)$ipfilter;
-		$this->_log = (string)$log;
-		$this->_emailerr = (string)$emailerr;
+        $this->_secretKey = (string)AtoPaymentSystem::getDriverParameter('payeer', 'payeer_secret_key');
+		$this->_ipfilter = (string)AtoPaymentSystem::getDriverParameter('payeer', 'payeer_ip_filter');
+		$this->_log = (string)AtoPaymentSystem::getDriverParameter('payeer', 'payeer_log');
+		$this->_emailerr = (string)AtoPaymentSystem::getDriverParameter('payeer', 'payeer_email_error');
+		$this->_req = $request;
         $this->validateRequestParams();
     }
 
     private function validateRequestParams()
     {
-		if (isset($_POST['m_operation_id']) && isset($_POST['m_sign']))
+		if (isset($this->_req['m_operation_id']) && isset($this->_req['m_sign']))
 		{
 			$m_key = $this->_secretKey;
 			
 			$arHash = array(
-				$_POST['m_operation_id'],
-				$_POST['m_operation_ps'],
-				$_POST['m_operation_date'],
-				$_POST['m_operation_pay_date'],
-				$_POST['m_shop'],
-				$_POST['m_orderid'],
-				$_POST['m_amount'],
-				$_POST['m_curr'],
-				$_POST['m_desc'],
-				$_POST['m_status'],
+				$this->_req['m_operation_id'],
+				$this->_req['m_operation_ps'],
+				$this->_req['m_operation_date'],
+				$this->_req['m_operation_pay_date'],
+				$this->_req['m_shop'],
+				$this->_req['m_orderid'],
+				$this->_req['m_amount'],
+				$this->_req['m_curr'],
+				$this->_req['m_desc'],
+				$this->_req['m_status'],
 				$m_key
 			);
 			
 			$sign_hash = strtoupper(hash('sha256', implode(":", $arHash)));
 			
-			if ($_POST["m_sign"] != $sign_hash)
+			if ($this->_req["m_sign"] != $sign_hash)
 			{
 				$to = $this->_emailerr;
 				
@@ -57,7 +58,7 @@ class Payeer_Callback
 					mail($to, $subject, $message, $headers);
 				}
 
-				exit($_POST['m_orderid'] . '|error');
+				exit($this->_req['m_orderid'] . '|error');
 			}
 			
 			// проверка принадлежности ip списку доверенных ip
@@ -92,17 +93,17 @@ class Payeer_Callback
 		
 			$log_text = 
 				"--------------------------------------------------------\n".
-				"operation id		".$_POST["m_operation_id"]."\n".
-				"operation ps		".$_POST["m_operation_ps"]."\n".
-				"operation date		".$_POST["m_operation_date"]."\n".
-				"operation pay date	".$_POST["m_operation_pay_date"]."\n".
-				"shop				".$_POST["m_shop"]."\n".
-				"order id			".$_POST["m_orderid"]."\n".
-				"amount				".$_POST["m_amount"]."\n".
-				"currency			".$_POST["m_curr"]."\n".
-				"description		".base64_decode($_POST["m_desc"])."\n".
-				"status				".$_POST["m_status"]."\n".
-				"sign				".$_POST["m_sign"]."\n\n";
+				"operation id		".$this->_req["m_operation_id"]."\n".
+				"operation ps		".$this->_req["m_operation_ps"]."\n".
+				"operation date		".$this->_req["m_operation_date"]."\n".
+				"operation pay date	".$this->_req["m_operation_pay_date"]."\n".
+				"shop				".$this->_req["m_shop"]."\n".
+				"order id			".$this->_req["m_orderid"]."\n".
+				"amount				".$this->_req["m_amount"]."\n".
+				"currency			".$this->_req["m_curr"]."\n".
+				"description		".base64_decode($this->_req["m_desc"])."\n".
+				"status				".$this->_req["m_status"]."\n".
+				"sign				".$this->_req["m_sign"]."\n\n";
 					
 			if (!empty($this->_log))
 			{
@@ -113,20 +114,20 @@ class Payeer_Callback
 				
 			$status_now = $oDB->fetchValue(
 				DB_Query::getSnippet("SELECT `status` FROM `cms_es_orders` WHERE `id` = %s")
-				->q($_POST['m_orderid'])
+				->q($this->_req['m_orderid'])
 			);
 				
-			if ($_POST['m_status'] == 'success' && $valid_ip)
+			if ($this->_req['m_status'] == 'success' && $valid_ip)
 			{
 				if ($status_now != 'checkout')
 				{
 					$qupdate = $oDB->fetchValue(DB_Query::getUpdateQuery(
 						'cms_es_orders',
 						array('status'  => 'confirmed_done'),
-						DB_Query::getSnippet('WHERE id IN (%s)')->q($_POST['m_orderid'])
+						DB_Query::getSnippet('WHERE id IN (%s)')->q($this->_req['m_orderid'])
 					));
 					
-					exit($_POST['m_orderid'] . '|success');
+					exit($this->_req['m_orderid'] . '|success');
 				}
 			}
 			else
@@ -136,7 +137,7 @@ class Payeer_Callback
 					$qupdate = $oDB->fetchValue(DB_Query::getUpdateQuery(
 						'cms_es_orders',
 						array('status'  => 'cancelled'),
-						DB_Query::getSnippet('WHERE id IN (%s)')->q($_POST['m_orderid'])
+						DB_Query::getSnippet('WHERE id IN (%s)')->q($this->_req['m_orderid'])
 					));
 					
 					$to = $this->_emailerr;
@@ -146,7 +147,7 @@ class Payeer_Callback
 						$subject = "Payment error";
 						$message = "Failed to make the payment through Payeer for the following reasons:\n\n";
 						
-						if ($_POST['m_status'] != "success")
+						if ($this->_req['m_status'] != "success")
 						{
 							$message .= " - The payment status is not success\n";
 						}
@@ -163,15 +164,11 @@ class Payeer_Callback
 						mail($to, $subject, $message, $headers);
 					}
 				
-					exit($_POST['m_orderid'] . '|error');
+					exit($this->_req['m_orderid'] . '|error');
 				}
 			}
 		}
     }
 }
 
-$secretKey = AtoPaymentSystem::getDriverParameter('payeer', 'payeer_secret_key');
-$ipfilter = AtoPaymentSystem::getDriverParameter('payeer', 'payeer_ip_filter');
-$log = AtoPaymentSystem::getDriverParameter('payeer', 'payeer_log');
-$emailerr = AtoPaymentSystem::getDriverParameter('payeer', 'payeer_email_error');
-$atoPayeerCallback = new Payeer_Callback($_POST, $secretKey, $ipfilter, $log, $emailerr);
+$atoPayeerCallback = new Payeer_Callback($_POST);
