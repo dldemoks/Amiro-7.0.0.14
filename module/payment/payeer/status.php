@@ -116,7 +116,7 @@ class Payeer_Callback
 				->q($_POST['m_orderid'])
 			);
 				
-			if ($_POST['m_sign'] == $sign_hash && $_POST['m_status'] == 'success' && $valid_ip)
+			if ($_POST['m_status'] == 'success' && $valid_ip)
 			{
 				if ($status_now != 'checkout')
 				{
