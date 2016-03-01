@@ -126,7 +126,7 @@ class Payeer_Callback
 						DB_Query::getSnippet('WHERE id IN (%s)')->q($_POST['m_orderid'])
 					));
 					
-					exit ($_POST['m_orderid'] . '|success');
+					exit($_POST['m_orderid'] . '|success');
 				}
 			}
 			else
