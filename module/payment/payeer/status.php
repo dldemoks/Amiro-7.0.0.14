@@ -21,9 +21,31 @@ class Payeer_Callback
     {
 		if (isset($this->_request['m_operation_id']) && isset($this->_request['m_sign']))
 		{
-			$m_key = $this->_secretKey;
+			// запись логов
 			
-			$arHash = array(
+			$log_text = 
+				"--------------------------------------------------------\n" .
+				"operation id		" . $this->_request["m_operation_id"] . "\n" .
+				"operation ps		" . $this->_request["m_operation_ps"] . "\n" .
+				"operation date		" . $this->_request["m_operation_date"] . "\n" .
+				"operation pay date	" . $this->_request["m_operation_pay_date"] . "\n" .
+				"shop				" . $this->_request["m_shop"] . "\n" .
+				"order id			" . $this->_request["m_orderid"] . "\n" .
+				"amount				" . $this->_request["m_amount"] . "\n" .
+				"currency			" . $this->_request["m_curr"] . "\n" .
+				"description		" . base64_decode($this->_request["m_desc"]) . "\n" .
+				"status				" . $this->_request["m_status"] . "\n" .
+				"sign				" . $this->_request["m_sign"] . "\n\n";
+				
+			if (!empty($this->_log))
+			{
+				file_put_contents($_SERVER['DOCUMENT_ROOT'] . $this->_log, $log_text, FILE_APPEND);
+			}
+			
+			
+			// вычисление цифровой подписи
+			
+			$sign_hash = strtoupper(hash('sha256', implode(":", array(
 				$this->_request['m_operation_id'],
 				$this->_request['m_operation_ps'],
 				$this->_request['m_operation_date'],
@@ -34,67 +56,51 @@ class Payeer_Callback
 				$this->_request['m_curr'],
 				$this->_request['m_desc'],
 				$this->_request['m_status'],
-				$m_key
-			);
+				$this->_secretKey
+			))));
 			
-			$sign_hash = strtoupper(hash('sha256', implode(":", $arHash)));
 			
+			// подлинность ip адреса
+			
+			$valid_ip = true;
 			$list_ip_str = str_replace(' ', '', $this->_ipfilter);
 			
 			if (!empty($list_ip_str)) 
 			{
 				$list_ip = explode(',', $list_ip_str);
-				$this_ip = $_SERVER['REMOTE_ADDR'];
-				$this_ip_field = explode('.', $this_ip);
+				$this_ip_field = explode('.', $_SERVER['REMOTE_ADDR']);
 				$list_ip_field = array();
 				$i = 0;
-				$valid_ip = FALSE;
+				$valid_ip = false;
 				foreach ($list_ip as $ip)
 				{
 					$ip_field[$i] = explode('.', $ip);
-					if ((($this_ip_field[0] ==  $ip_field[$i][0]) or ($ip_field[$i][0] == '*')) and
-						(($this_ip_field[1] ==  $ip_field[$i][1]) or ($ip_field[$i][1] == '*')) and
-						(($this_ip_field[2] ==  $ip_field[$i][2]) or ($ip_field[$i][2] == '*')) and
-						(($this_ip_field[3] ==  $ip_field[$i][3]) or ($ip_field[$i][3] == '*')))
-						{
-							$valid_ip = TRUE;
-							break;
-						}
+					if ((($this_ip_field[0] ==  $ip_field[$i][0]) || ($ip_field[$i][0] == '*')) &&
+						(($this_ip_field[1] ==  $ip_field[$i][1]) || ($ip_field[$i][1] == '*')) &&
+						(($this_ip_field[2] ==  $ip_field[$i][2]) || ($ip_field[$i][2] == '*')) &&
+						(($this_ip_field[3] ==  $ip_field[$i][3]) || ($ip_field[$i][3] == '*')))
+					{
+						$valid_ip = true;
+						break;
+					}
 					$i++;
 				}
 			}
-			else
-			{
-				$valid_ip = TRUE;
-			}
-		
-			$log_text = 
-				"--------------------------------------------------------\n".
-				"operation id		".$this->_request["m_operation_id"]."\n".
-				"operation ps		".$this->_request["m_operation_ps"]."\n".
-				"operation date		".$this->_request["m_operation_date"]."\n".
-				"operation pay date	".$this->_request["m_operation_pay_date"]."\n".
-				"shop				".$this->_request["m_shop"]."\n".
-				"order id			".$this->_request["m_orderid"]."\n".
-				"amount				".$this->_request["m_amount"]."\n".
-				"currency			".$this->_request["m_curr"]."\n".
-				"description		".base64_decode($this->_request["m_desc"])."\n".
-				"status				".$this->_request["m_status"]."\n".
-				"sign				".$this->_request["m_sign"]."\n\n";
 			
+			
+			// проверка цифровой подписи и ip
+		
 			if (!($this->_request["m_sign"] == $sign_hash && $valid_ip))
 			{
 				if (!empty($this->_emailerr))
 				{
-					$to = $this->_emailerr;
-					$subject = "Payment error";
 					$message = "Failed to make the payment through Payeer for the following reasons:\n\n";
 					
 					if (!$valid_ip)
 					{
-						$message .= " - ip address of the server is not trusted\n";
-						$message .= "   trusted ip: " . $this->_ipfilter . "\n";
-						$message .= "   ip of the current server: " . $_SERVER['REMOTE_ADDR'] . "\n";
+						$message .= " - ip address of the server is not trusted\n" . 
+									"   trusted ip: " . $this->_ipfilter . "\n" . 
+									"   ip of the current server: " . $_SERVER['REMOTE_ADDR'] . "\n";
 					}
 					
 					if ($this->_request["m_sign"] != $sign_hash)
@@ -103,61 +109,104 @@ class Payeer_Callback
 					}
 					
 					$message .= "\n" . $log_text;
-					$headers = "From: no-reply@" . $_SERVER['HTTP_SERVER'] . "\r\nContent-type: text/plain; charset=utf-8 \r\n";
-					mail($to, $subject, $message, $headers);
+					$headers = "From: no-reply@" . $_SERVER['HTTP_SERVER'] . "\r\n" . 
+								"Content-type: text/plain; charset=utf-8 \r\n";
+						
+					mail($this->_emailerr, 'Payment error', $message, $headers);
 				}
 
 				return $this->_request['m_orderid'] . '|error';
 			}
 			
-			if (!empty($this->_log))
-			{
-				file_put_contents($_SERVER['DOCUMENT_ROOT'] . $this->_log, $log_text, FILE_APPEND);
-			}
-
+			
+			// загрузка заказа
+			
 			$oDB = AMI::getSingleton('db');
 
-			$status_now = $oDB->fetchValue(
-				DB_Query::getSnippet("SELECT `status` FROM `cms_es_orders` WHERE `id` = %s")
+			$order = $oDB->fetchRow(
+				DB_Query::getSnippet("SELECT `status`,`sysinfo`,`total` FROM `cms_es_orders` WHERE `id` = %s")
 				->q($this->_request['m_orderid'])
 			);
-				
-			if ($this->_request['m_status'] == 'success')
+			
+			$order_curr = preg_replace('/^.*s:8:"fee_curr";s:.+?:"(.+?)".*$/', '$1', $order['sysinfo']);
+			$order_curr = ($order_curr == 'RUR') ? 'RUB' : $order_curr;
+			$order_amount = number_format($order['total'], 2, '.', '');
+			
+			
+			// проверка суммы и валюты
+			
+			if (!($this->_request['m_amount'] == $order_amount && $this->_request['m_curr'] == $order_curr))
 			{
-				if ($status_now != 'checkout')
+				if (!empty($this->_emailerr))
 				{
-					$qupdate = $oDB->fetchValue(DB_Query::getUpdateQuery(
-						'cms_es_orders',
-						array('status'  => 'confirmed_done'),
-						DB_Query::getSnippet('WHERE id IN (%s)')->q($this->_request['m_orderid'])
-					));
+					$message = "Failed to make the payment through Payeer for the following reasons:\n\n";
 					
-					return $this->_request['m_orderid'] . '|success';
-				}
-			}
-			else
-			{
-				if ($status_now != 'checkout')
-				{
-					$qupdate = $oDB->fetchValue(DB_Query::getUpdateQuery(
-						'cms_es_orders',
-						array('status'  => 'cancelled'),
-						DB_Query::getSnippet('WHERE id IN (%s)')->q($this->_request['m_orderid'])
-					));
-					
-					if (!empty($this->_emailerr))
+					if ($this->_request['m_amount'] != $order_amount)
 					{
-						$to = $this->_emailerr;
-						$subject = "Payment error";
-						$message = "Failed to make the payment through Payeer for the following reasons:\n\n";
-						$message .= " - The payment status is not success\n";
-						$message .= "\n" . $log_text;
-						$headers = "From: no-reply@" . $_SERVER['HTTP_SERVER'] . "\r\nContent-type: text/plain; charset=utf-8 \r\n";
-						mail($to, $subject, $message, $headers);
+						$message .= " - Wrong amount\n";
 					}
-				
-					return $this->_request['m_orderid'] . '|error';
+					
+					if ($this->_request['m_curr'] != $order_curr)
+					{
+						$message .= " - Wrong currency\n";
+					}
+					
+					$message .= "\n" . $log_text;
+					$headers = 
+						"From: no-reply@" . $_SERVER['HTTP_SERVER'] . "\r\n" . 
+						"Content-type: text/plain; charset=utf-8 \r\n";
+						
+					mail($this->_emailerr, 'Payment error', $message, $headers);
 				}
+
+				return $this->_request['m_orderid'] . '|error';
+			}
+			
+			
+			// проверка статуса
+			
+			switch ($this->_request['m_status'])
+			{
+				case 'success':
+					if ($order['status'] != 'checkout')
+					{
+						$qupdate = $oDB->fetchValue(DB_Query::getUpdateQuery(
+							'cms_es_orders',
+							array('status'  => 'confirmed_done'),
+							DB_Query::getSnippet('WHERE id IN (%s)')->q($this->_request['m_orderid'])
+						));
+						
+						return $this->_request['m_orderid'] . '|success';
+					}
+					break;
+					
+				case 'fail':
+					if ($order['status'] != 'checkout')
+					{
+						$qupdate = $oDB->fetchValue(DB_Query::getUpdateQuery(
+							'cms_es_orders',
+							array('status'  => 'cancelled'),
+							DB_Query::getSnippet('WHERE id IN (%s)')->q($this->_request['m_orderid'])
+						));
+						
+						if (!empty($this->_emailerr))
+						{
+							$to = $this->_emailerr;
+							$subject = "Payment error";
+							$message = "Failed to make the payment through Payeer for the following reasons:\n\n";
+							$message .= " - The payment status is not success\n";
+							$message .= "\n" . $log_text;
+							$headers = "From: no-reply@" . $_SERVER['HTTP_SERVER'] . "\r\nContent-type: text/plain; charset=utf-8 \r\n";
+							mail($to, $subject, $message, $headers);
+						}
+					
+						return $this->_request['m_orderid'] . '|error';
+					}
+					break;
+					
+				default: 
+					return $this->_request['m_orderid'] . '|error';
+					break;
 			}
 		}
 		else
