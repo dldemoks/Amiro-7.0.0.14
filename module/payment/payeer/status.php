@@ -39,23 +39,6 @@ class Payeer_Callback
 			
 			$sign_hash = strtoupper(hash('sha256', implode(":", $arHash)));
 			
-			if ($this->_request["m_sign"] != $sign_hash)
-			{
-				if (!empty($this->_emailerr))
-				{
-					$to = $this->_emailerr;
-					$subject = "Payment error";
-					$message = "Failed to make the payment through Payeer for the following reasons:\n\n";
-					$message .= " - Do not match the digital signature\n";
-					$message .= "\n" . $log_text;
-					$headers = "From: no-reply@" . $_SERVER['HTTP_SERVER'] . "\r\nContent-type: text/plain; charset=utf-8 \r\n";
-					mail($to, $subject, $message, $headers);
-				}
-
-				return $this->_request['m_orderid'] . '|error';
-			}
-			
-			// проверка принадлежности ip списку доверенных ip
 			$list_ip_str = str_replace(' ', '', $this->_ipfilter);
 			
 			if (!empty($list_ip_str)) 
@@ -98,20 +81,48 @@ class Payeer_Callback
 				"description		".base64_decode($this->_request["m_desc"])."\n".
 				"status				".$this->_request["m_status"]."\n".
 				"sign				".$this->_request["m_sign"]."\n\n";
+			
+			if (!($this->_request["m_sign"] == $sign_hash && $valid_ip))
+			{
+				if (!empty($this->_emailerr))
+				{
+					$to = $this->_emailerr;
+					$subject = "Payment error";
+					$message = "Failed to make the payment through Payeer for the following reasons:\n\n";
 					
+					if (!$valid_ip)
+					{
+						$message .= " - ip address of the server is not trusted\n";
+						$message .= "   trusted ip: " . $this->_ipfilter . "\n";
+						$message .= "   ip of the current server: " . $_SERVER['REMOTE_ADDR'] . "\n";
+					}
+					
+					if ($this->_request["m_sign"] != $sign_hash)
+					{
+						$message .= " - Do not match the digital signature\n";
+					}
+					
+					$message .= "\n" . $log_text;
+					$headers = "From: no-reply@" . $_SERVER['HTTP_SERVER'] . "\r\nContent-type: text/plain; charset=utf-8 \r\n";
+					mail($to, $subject, $message, $headers);
+				}
+
+				return $this->_request['m_orderid'] . '|error';
+			}
+			
 			if (!empty($this->_log))
 			{
 				file_put_contents($_SERVER['DOCUMENT_ROOT'] . $this->_log, $log_text, FILE_APPEND);
 			}
 
 			$oDB = AMI::getSingleton('db');
-				
+
 			$status_now = $oDB->fetchValue(
 				DB_Query::getSnippet("SELECT `status` FROM `cms_es_orders` WHERE `id` = %s")
 				->q($this->_request['m_orderid'])
 			);
 				
-			if ($this->_request['m_status'] == 'success' && $valid_ip)
+			if ($this->_request['m_status'] == 'success')
 			{
 				if ($status_now != 'checkout')
 				{
@@ -139,19 +150,7 @@ class Payeer_Callback
 						$to = $this->_emailerr;
 						$subject = "Payment error";
 						$message = "Failed to make the payment through Payeer for the following reasons:\n\n";
-						
-						if ($this->_request['m_status'] != "success")
-						{
-							$message .= " - The payment status is not success\n";
-						}
-						
-						if (!$valid_ip)
-						{
-							$message .= " - ip address of the server is not trusted\n";
-							$message .= "   trusted ip: ".$this->_ipfilter."\n";
-							$message .= "   ip of the current server: ".$_SERVER['REMOTE_ADDR']."\n";
-						}
-						
+						$message .= " - The payment status is not success\n";
 						$message .= "\n" . $log_text;
 						$headers = "From: no-reply@" . $_SERVER['HTTP_SERVER'] . "\r\nContent-type: text/plain; charset=utf-8 \r\n";
 						mail($to, $subject, $message, $headers);
