@@ -165,11 +165,11 @@ class Payeer_Callback
 			
 			// проверка статуса
 			
-			switch ($this->_request['m_status'])
+			if ($order['status'] != 'checkout')
 			{
-				case 'success':
-					if ($order['status'] != 'checkout')
-					{
+				switch ($this->_request['m_status'])
+				{
+					case 'success':
 						$qupdate = $oDB->fetchValue(DB_Query::getUpdateQuery(
 							'cms_es_orders',
 							array('status'  => 'confirmed_done'),
@@ -177,12 +177,9 @@ class Payeer_Callback
 						));
 						
 						return $this->_request['m_orderid'] . '|success';
-					}
-					break;
-					
-				case 'fail':
-					if ($order['status'] != 'checkout')
-					{
+						break;
+						
+					case 'fail':
 						$qupdate = $oDB->fetchValue(DB_Query::getUpdateQuery(
 							'cms_es_orders',
 							array('status'  => 'cancelled'),
@@ -201,12 +198,12 @@ class Payeer_Callback
 						}
 					
 						return $this->_request['m_orderid'] . '|error';
-					}
-					break;
-					
-				default: 
-					return $this->_request['m_orderid'] . '|error';
-					break;
+						break;
+						
+					default: 
+						return $this->_request['m_orderid'] . '|error';
+						break;
+				}
 			}
 		}
 		else
