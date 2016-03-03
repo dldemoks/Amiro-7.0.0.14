@@ -126,8 +126,8 @@ class Payeer_Callback
 				->q($request['m_orderid'])
 			);
 			
-			$order_curr = preg_replace('/^.*s:8:"fee_curr";s:.+?:"(.+?)".*$/', '$1', $order['sysinfo']);
-			$order_curr = ($order_curr == 'RUR') ? 'RUB' : $order_curr;
+			$sysinfo = unserialize($order['sysinfo']);
+			$order_curr = ($sysinfo['fee_curr'] == 'RUR') ? 'RUB' : $sysinfo['fee_curr'];
 			$order_amount = number_format($order['total'], 2, '.', '');
 			
 			
