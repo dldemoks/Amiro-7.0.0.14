@@ -121,30 +121,46 @@ class Payeer_Callback
 				
 				// проверка статуса
 				
-				if (!$err && $order['status'] !== 'checkout')
+				if (!$err)
 				{
-					switch ($request['m_status'])
+					if ($order['status'] != 'checkout')
 					{
-						case 'success':
-							$qupdate = $oDB->fetchValue(DB_Query::getUpdateQuery(
-								'cms_es_orders',
-								array('status'  => 'confirmed_done'),
-								DB_Query::getSnippet('WHERE id IN (%s)')->q($request['m_orderid'])
-							));
-							break;
-							
-						default:
-							if ($order['order_status_id'] !== $this->config->get('payeer_order_fail_id'))
-							{
+						switch ($request['m_status'])
+						{
+							case 'success':
+								$qupdate = $oDB->fetchValue(DB_Query::getUpdateQuery(
+									'cms_es_orders',
+									array('status'  => 'confirmed_done'),
+									DB_Query::getSnippet('WHERE id IN (%s)')->q($request['m_orderid'])
+								));
+								return $request['m_orderid'] . '|success';
+								break;
+								
+							default:
 								$message .= " - The payment status is not success\n";
 								$qupdate = $oDB->fetchValue(DB_Query::getUpdateQuery(
 									'cms_es_orders',
 									array('status'  => 'cancelled'),
 									DB_Query::getSnippet('WHERE id IN (%s)')->q($request['m_orderid'])
 								));
-							}
-							$err = true;
-							break;
+								
+								$to = $this->_emailerr;
+					
+								if (!empty($to))
+								{
+									$message = "Failed to make the payment through Payeer for the following reasons:\n\n" . $message . "\n" . $log_text;
+									$headers = "From: no-reply@" . $_SERVER['HTTP_SERVER'] . "\r\n" . 
+									"Content-type: text/plain; charset=utf-8 \r\n";
+									mail($to, 'Payment error', $message, $headers);
+								}
+					
+								return $request['m_orderid'] . '|error';
+								break;
+						}
+					}
+					else
+					{
+						return false;
 					}
 				}
 			}
@@ -160,12 +176,8 @@ class Payeer_Callback
 					"Content-type: text/plain; charset=utf-8 \r\n";
 					mail($to, 'Payment error', $message, $headers);
 				}
-
+				
 				return $request['m_orderid'] . '|error';
-			}
-			else
-			{
-				return $request['m_orderid'] . '|success';
 			}
 		}
 		else
