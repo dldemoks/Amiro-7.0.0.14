@@ -115,7 +115,7 @@ class Payeer_Callback
 
 				if ($request['m_curr'] != $order_curr)
 				{
-					$message .= $this->language->get('text_email_message8') . "\n";
+					$message .= " - Wrong currency\n";
 					$err = true;
 				}
 				
